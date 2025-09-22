@@ -66,7 +66,7 @@ weighted avg    0.93      0.93      0.93      1031
 
 1.  **Clone the repository:**
     ```bash
-    git clone [your-repo-url]
+    git clone [https://github.com/ishi142005/Code_Comment_Reviewer.git]
     cd code-comment-reviewer
     ```
 2.  **Create a virtual environment and install dependencies:**
