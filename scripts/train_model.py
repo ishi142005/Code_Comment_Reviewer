@@ -1,136 +1,74 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.svm import LinearSVC
-from sklearn.metrics import classification_report, confusion_matrix
-import joblib
-import random
-from nltk.corpus import wordnet
-import nltk
+import re
+import os
 
-nltk.download('wordnet', quiet=True)
-nltk.download('omw-1.4', quiet=True)
-
-random.seed(42)  
-
-def get_synonyms(word):
-    synonyms = set()
-    for syn in wordnet.synsets(word):
-        for lemma in syn.lemmas():
-            synonym = lemma.name().replace("_", " ").lower()
-            if synonym != word.lower():
-                synonyms.add(synonym)
-    return list(synonyms)
-
-def synonym_replacement(words, n=1):
-    new_words = words.copy()
-    eligible_words = [w for w in words if get_synonyms(w)]
-    random.shuffle(eligible_words)
-    num_replaced = 0
-    for w in eligible_words:
-        synonyms = get_synonyms(w)
-        if synonyms:
-            new_words = [random.choice(synonyms) if word==w else word for word in new_words]
-            num_replaced += 1
-        if num_replaced >= n:
-            break
-    return new_words
-
-def eda(sentence, alpha_sr=0.1, p_rd=0.1):
-    words = sentence.split()
-    if len(words) < 2:
-        return sentence
-    
-    # --- Synonym Replacement ---
-    n_sr = max(1, int(alpha_sr * len(words)))
-    words = synonym_replacement(words, n_sr)
-    
-    # --- Random Deletion ---
-    if p_rd > 0:
-        new_words = [w for w in words if random.random() > p_rd]
-        if new_words:
-            words = new_words
-    
-    return ' '.join(words)
-
-def augment_and_balance_training_data(X_train, y_train):
+def merge_text_files(file_paths, output_csv):
     """
-    Applies EDA augmentation ONLY to the training data to balance classes.
+    Reads multiple text files, merges them line by line into a single CSV.
+    Each line is treated as a comment.
     """
-    df_train = pd.DataFrame({'Comment': X_train, 'Label': y_train})
-    target_count = df_train['Label'].value_counts().max()
+    all_comments = []
+    for file_path in file_paths:
+        if os.path.exists(file_path):
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                lines = [line.strip() for line in f if line.strip()]
+                all_comments.extend(lines)
+        else:
+            print(f"Warning: {file_path} not found.")
     
-    df_balanced_list = []
+    df = pd.DataFrame({"Comment": all_comments})
+    df.to_csv(output_csv, index=False)
+    print(f"Merged {len(all_comments)} comments into {output_csv}")
+
+def create_initial_dataset(raw_data_path, output_path):
+    """
+    Reads raw comment data, cleans it, applies heuristic labels,
+    removes duplicates, and saves the final clean dataset.
+    """
     
-    for label in df_train['Label'].unique():
-        subset = df_train[df_train['Label'] == label]
-        df_balanced_list.append(subset)  # Keep original
-        
-        current_count = len(subset)
-        n_needed = target_count - current_count
-        
-        if n_needed > 0:
-            augmented_comments = []
-            for _ in range(n_needed):
-                original_comment = subset.sample(1)['Comment'].iloc[0]
-                augmented_comments.append(eda(original_comment))
-            
-            df_aug = pd.DataFrame({'Comment': augmented_comments, 'Label': [label]*n_needed})
-            df_balanced_list.append(df_aug)
-    
-    df_train_balanced = pd.concat(df_balanced_list).sample(frac=1, random_state=42).reset_index(drop=True)
-    return df_train_balanced['Comment'], df_train_balanced['Label']
+    df = pd.read_csv(raw_data_path)
+    clean_comments = []
 
-# --- Main Training Function ---
-def train_and_evaluate(csv_path="data/labeled_comments_nodup.csv"):
-    # Load original dataset
-    df_original = pd.read_csv(csv_path)
-    df_original.dropna(subset=['Comment'], inplace=True)
+    for comment in df['Comment']:
+        block = re.split(r"#Code:", comment, flags=re.IGNORECASE)[0]
+        block = re.sub(r"#No.*|#File:.*", "", block)
+        block = re.sub(r"/\*\*|\*/", "", block)
+        block = re.sub(r"^\s*\*+", "", block, flags=re.MULTILINE)
+        block = re.sub(r"@param\s+\w+|@return|@throws\s+\w+|@{?inheritDoc", "", block, flags=re.IGNORECASE)
+        block = re.sub(r"\s+", " ", block).strip()
+        if len(block) > 5:
+            clean_comments.append(block)
 
-    X = df_original['Comment']
-    y = df_original['Label']
+    def assign_label(comment):
+        c = comment.lower()
+        if any(word in c for word in ["error","fail","crash","wrong","bug","exception","incorrect"]):
+            return "Bug"
+        elif any(word in c for word in ["why","what","how","clarify","explain","question","unsure"]):
+            return "Question"
+        elif any(word in c for word in ["consider","should","maybe","could","suggestion","improve","alternative"]):
+            return "Suggestion"
+        elif any(word in c for word in ["format","naming","style","whitespace","indent","typo","convention"]):
+            return "Style Nitpick"
+        else:
+            return "Suggestion" 
 
-    # Split BEFORE augmentation (sanctuary test set)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-    print(f"Original split -> Train: {len(X_train)}, Test: {len(X_test)}")
-    print("\nClass distribution in the UNTOUCHED test set:\n", y_test.value_counts())
+    labels = [assign_label(c) for c in clean_comments]
+    df_clean = pd.DataFrame({"Comment": clean_comments, "Label": labels})
 
-    # Augment ONLY training data
-    X_train_balanced, y_train_balanced = augment_and_balance_training_data(X_train, y_train)
-    print(f"\nAfter augmentation -> Balanced Train: {len(X_train_balanced)}")
-    print("\nClass distribution in the BALANCED training set:\n", y_train_balanced.value_counts())
+    print(f"Before removing duplicates: {len(df_clean)}")
+    df_clean = df_clean.drop_duplicates(subset="Comment").reset_index(drop=True)
+    print(f"After removing duplicates: {len(df_clean)}")
 
-    # Vectorize
-    vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1,2))
-    X_train_vec = vectorizer.fit_transform(X_train_balanced)
-    
-    # Model with balanced class weights
-    clf = LinearSVC(max_iter=2000, class_weight='balanced')
-
-    # --- NEW: Cross-validation on TRAINING data ---
-    print("\nRunning 5-Fold Cross-Validation on balanced training data...")
-    cv_scores = cross_val_score(clf, X_train_vec, y_train_balanced, cv=5, scoring='accuracy')
-    print("CV Scores:", cv_scores)
-    print("Average CV accuracy:", cv_scores.mean())
-    print("CV accuracy std deviation:", cv_scores.std())
-
-    # Fit on full balanced training data
-    clf.fit(X_train_vec, y_train_balanced)
-
-    # Evaluate on untouched test set
-    X_test_vec = vectorizer.transform(X_test)
-    y_pred = clf.predict(X_test_vec)
-
-    print("\n--- FINAL EVALUATION ON UNSEEN TEST DATA ---")
-    print("Classification Report:\n", classification_report(y_test, y_pred))
-    print("\nConfusion Matrix:\n", confusion_matrix(y_test, y_pred))
-    
-    # Save model and vectorizer
-    joblib.dump(clf, "models/linear_svc_code_comments.pkl")
-    joblib.dump(vectorizer, "models/tfidf_vectorizer.pkl")
-    print("\nCorrected model and vectorizer saved to 'models/'")
+    df_clean.to_csv(output_path, index=False)
+    print(f"Clean, labeled dataset saved to {output_path}")
 
 if __name__ == "__main__":
-    train_and_evaluate()
+    merge_text_files(
+        file_paths=["data/coherent.txt", "data/noncoherent.txt"],
+        output_csv="data/comments_for_labeling.csv"
+    )
+
+    create_initial_dataset(
+        raw_data_path="data/comments_for_labeling.csv",
+        output_path="data/labeled_comments_nodup.csv"
+    )
