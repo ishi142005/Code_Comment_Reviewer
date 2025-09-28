@@ -18,28 +18,21 @@ VECTORIZER_URL = "https://drive.google.com/drive/u/0/folders/18cvokJhn5BhY00HahN
 
 @st.cache_resource
 def load_models():
-    """Downloads and loads the trained model + vectorizer from Google Drive."""
+    model_path = "linear_svc_code_comments.pkl"
+    vectorizer_path = "tfidf_vectorizer.pkl"
+
+    if not os.path.exists(model_path):
+        with open(model_path, "wb") as f:
+            f.write(requests.get(MODEL_URL).content)
+
+    if not os.path.exists(vectorizer_path):
+        with open(vectorizer_path, "wb") as f:
+            f.write(requests.get(VECTORIZER_URL).content)
+
     try:
-        os.makedirs("models", exist_ok=True)
-
-        model_path = "models/linear_svc_code_comments.pkl"
-        if not os.path.exists(model_path):
-            st.info("Downloading model file...")
-            r = requests.get(MODEL_URL)
-            with open(model_path, "wb") as f:
-                f.write(r.content)
-
-        vectorizer_path = "models/tfidf_vectorizer.pkl"
-        if not os.path.exists(vectorizer_path):
-            st.info("Downloading vectorizer file...")
-            r = requests.get(VECTORIZER_URL)
-            with open(vectorizer_path, "wb") as f:
-                f.write(r.content)
-
         clf = joblib.load(model_path)
         vectorizer = joblib.load(vectorizer_path)
         return clf, vectorizer
-
     except Exception as e:
         st.error(f"Error loading models: {e}")
         return None, None
