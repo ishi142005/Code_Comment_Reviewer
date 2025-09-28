@@ -3,9 +3,9 @@ import joblib
 import pandas as pd
 import requests
 import re
-import plotly.express as px  ### NEW: Import Plotly for better charts
+import plotly.express as px
+import os
 
-# --- Page Configuration (Do this first) ---
 st.set_page_config(
     page_title="Code Comment Analyzer",
     page_icon="🤖",
@@ -13,33 +13,50 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Model Loading (No changes needed) ---
+MODEL_URL = "https://drive.google.com/drive/u/0/folders/18cvokJhn5BhY00HahNAdoyBgvth-Z7Sh?ths=true"
+VECTORIZER_URL = "https://drive.google.com/drive/u/0/folders/18cvokJhn5BhY00HahNAdoyBgvth-Z7Sh?ths=true"
+
 @st.cache_resource
 def load_models():
-    """Loads the trained model and vectorizer from disk."""
+    """Downloads and loads the trained model + vectorizer from Google Drive."""
     try:
-        clf = joblib.load("models/linear_svc_code_comments.pkl")
-        vectorizer = joblib.load("models/tfidf_vectorizer.pkl")
+        os.makedirs("models", exist_ok=True)
+
+        model_path = "models/linear_svc_code_comments.pkl"
+        if not os.path.exists(model_path):
+            st.info("Downloading model file...")
+            r = requests.get(MODEL_URL)
+            with open(model_path, "wb") as f:
+                f.write(r.content)
+
+        vectorizer_path = "models/tfidf_vectorizer.pkl"
+        if not os.path.exists(vectorizer_path):
+            st.info("Downloading vectorizer file...")
+            r = requests.get(VECTORIZER_URL)
+            with open(vectorizer_path, "wb") as f:
+                f.write(r.content)
+
+        clf = joblib.load(model_path)
+        vectorizer = joblib.load(vectorizer_path)
         return clf, vectorizer
-    except FileNotFoundError:
-        st.error("Model files not found. Please run the training script first.")
+
+    except Exception as e:
+        st.error(f"Error loading models: {e}")
         return None, None
+
 
 clf, vectorizer = load_models()
 
-# --- API & Helper Functions (No changes needed) ---
 def parse_pr_url(url):
-    """Extracts owner, repo, and PR number from a GitHub PR URL."""
     match = re.search(r"github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)", url)
     return match.groups() if match else (None, None, None)
 
 def fetch_pr_comments_api(owner, repo_name, pr_number):
-    """Fetch review comments from a PR using GitHub public API."""
     url = f"https://api.github.com/repos/{owner}/{repo_name}/pulls/{pr_number}/comments"
-    headers = {"Accept": "application/vnd.github.v3+json"} # Best practice
+    headers = {"Accept": "application/vnd.github.v3+json"}
     try:
         response = requests.get(url, headers=headers)
-        response.raise_for_status() # This will raise an error for 4xx or 5xx status codes
+        response.raise_for_status()
         data = response.json()
         return [item['body'] for item in data]
     except requests.exceptions.HTTPError as e:
@@ -49,11 +66,6 @@ def fetch_pr_comments_api(owner, repo_name, pr_number):
         st.error(f"An unexpected error occurred: {e}")
         return None
 
-# ==============================================================================
-#                          --- UI Application ---
-# ==============================================================================
-
-### UI Change 1: Use the sidebar for inputs to keep the main page clean.
 with st.sidebar:
     st.image("https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png", width=100)
     st.header("Analyze a Pull Request")
@@ -63,7 +75,6 @@ with st.sidebar:
     )
     analyze_button = st.button("Analyze", type="primary", use_container_width=True)
     
-    ### UI Change 2: Put the playground in the sidebar too. It's a secondary feature.
     with st.expander("🧪 Test a Single Comment"):
         single_comment = st.text_area("Enter comment:", height=100)
         if st.button("Classify", use_container_width=True):
@@ -74,8 +85,6 @@ with st.sidebar:
             elif not single_comment:
                 st.warning("Please enter a comment.")
 
-
-### UI Change 3: A more professional and welcoming main page.
 st.title("🤖 Code Review Comment Analyzer")
 st.markdown("""
     Welcome! This tool uses a trained NLP model to analyze code review comments from a public GitHub pull request. 
@@ -83,10 +92,8 @@ st.markdown("""
     
     **To get started, paste a public GitHub PR URL into the sidebar and click 'Analyze'.**
 """)
+st.markdown("---")
 
-st.markdown("---") # A nice visual separator
-
-# --- Main Logic for Displaying Results (Only runs after button press) ---
 if analyze_button and pr_url:
     if clf is None:
         st.error("Model is not loaded. Cannot proceed.")
@@ -107,18 +114,15 @@ if analyze_button and pr_url:
                     X_new = vectorizer.transform(comments)
                     predictions = clf.predict(X_new)
                     
-                    ### UI Change 4: Use metrics and a more visually appealing summary.
                     st.success(f"Analysis Complete! Found and classified **{len(comments)}** comments.")
                     
                     label_counts = pd.Series(predictions).value_counts()
 
-                    # --- Display Key Metrics ---
                     cols = st.columns(len(label_counts))
                     for i, (label, count) in enumerate(label_counts.items()):
                         with cols[i]:
                             st.metric(label=label, value=count)
 
-                    # --- Display a more beautiful Plotly chart ---
                     st.subheader("📊 Classification Breakdown")
                     fig = px.pie(
                         values=label_counts.values, 
@@ -128,7 +132,6 @@ if analyze_button and pr_url:
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
-                    ### UI Change 5: Show the raw data in an expander, so it doesn't clutter the main view.
                     with st.expander("📄 View Raw Comments & Predictions"):
                         results_df = pd.DataFrame({'Comment': comments, 'Predicted Label': predictions})
                         st.dataframe(results_df)
