@@ -5,16 +5,19 @@ import requests
 import re
 import plotly.express as px
 import os
+import gdown
 
 st.set_page_config(
-    page_title="Code Comment Analyzer",
+    page_title="CommentSense",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+MODEL_ID = "1hd139JINBVPb-0yoA5PJ9e54McyfaoJ9"
+VECTORIZER_ID = "1UrVP40XE5yPZLm3FjRNFY23JsE_8VfzK"
 
-MODEL_URL = "https://drive.google.com/drive/u/0/folders/18cvokJhn5BhY00HahNAdoyBgvth-Z7Sh?ths=true"
-VECTORIZER_URL = "https://drive.google.com/drive/u/0/folders/18cvokJhn5BhY00HahNAdoyBgvth-Z7Sh?ths=true"
+MODEL_URL = f"https://drive.google.com/uc?export=download&id={MODEL_ID}"
+VECTORIZER_URL = f"https://drive.google.com/uc?export=download&id={VECTORIZER_ID}"
 
 @st.cache_resource
 def load_models():
@@ -22,12 +25,10 @@ def load_models():
     vectorizer_path = "tfidf_vectorizer.pkl"
 
     if not os.path.exists(model_path):
-        with open(model_path, "wb") as f:
-            f.write(requests.get(MODEL_URL).content)
+        gdown.download(MODEL_URL, model_path, quiet=False)
 
     if not os.path.exists(vectorizer_path):
-        with open(vectorizer_path, "wb") as f:
-            f.write(requests.get(VECTORIZER_URL).content)
+        gdown.download(VECTORIZER_URL, vectorizer_path, quiet=False)
 
     try:
         clf = joblib.load(model_path)
@@ -35,6 +36,10 @@ def load_models():
         return clf, vectorizer
     except Exception as e:
         st.error(f"Error loading models: {e}")
+        st.write("Model path exists:", os.path.exists(model_path))
+        st.write("Vectorizer path exists:", os.path.exists(vectorizer_path))
+        st.write("Model file size:", os.path.getsize(model_path) if os.path.exists(model_path) else "missing")
+        st.write("Vectorizer file size:", os.path.getsize(vectorizer_path) if os.path.exists(vectorizer_path) else "missing")
         return None, None
 
 
