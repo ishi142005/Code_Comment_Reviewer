@@ -1,19 +1,22 @@
-# Python cache
+# Node
+frontend/node_modules
+frontend/dist
+
+# Env files
+.env
+frontend/.env
+backend/.env
+
+# Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
+
+# ML files (optional if large)
 *.pkl
+!backend/models/*.pkl
 
-# Virtual environment
-venv/
-.env/
-
-# Data
-data/*.csv
-
-# OS files
+# OS
 .DS_Store
 
-#Github token
-.streamlit/secrets.toml
+data/
+*.csv
