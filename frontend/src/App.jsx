@@ -18,7 +18,7 @@ function App() {
     const isValid = /github\.com\/.+\/.+\/pull\/\d+/.test(prUrl);
 
     if (!isValid) {
-     setError("Please enter a valid GitHub Pull Request URL");
+     setError("Please enter a valid GitHub PR URL");
      return;
     }
 
@@ -38,7 +38,7 @@ function App() {
       const result = await res.json();
 
       if (!res.ok || result.error) {
-        setError(result.error || "Something went wrong");
+        setError(result.error || result.message || "Something went wrong");
       } else {
         setData(result);
       }
