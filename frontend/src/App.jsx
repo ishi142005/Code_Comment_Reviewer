@@ -3,7 +3,6 @@ import InputBox from "./components/InputBox.jsx";
 import Loader from "./components/Loader.jsx";
 import ErrorMessage from "./components/ErrorMessage.jsx";
 import Summary from "./components/Summary.jsx";
-import Chart from "./components/Chart.jsx";
 import CommentList from "./components/CommentList.jsx";
 import './App.css'
 
