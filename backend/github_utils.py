@@ -1,5 +1,6 @@
 import re
 import requests
+import os
 
 
 def parse_pr_url(url):
@@ -8,25 +9,32 @@ def parse_pr_url(url):
 
 
 def fetch_pr_comments(owner, repo, pr_number):
-    headers = {"Accept": "application/vnd.github.v3+json"}
+    token = os.getenv("GITHUB_TOKEN")
 
-    # Try review comments
-    review_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
-    review_res = requests.get(review_url, headers=headers)
+    headers = {
+        "Accept": "application/vnd.github.v3+json"
+    }
+
+    if token:
+        headers["Authorization"] = f"token {token}"
 
     comments = []
 
-    if review_res.status_code == 200:
-        review_data = review_res.json()
-        comments.extend([item["body"] for item in review_data])
+    # Review comments
+    review_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/comments"
+    review_res = requests.get(review_url, headers=headers)
 
-    # Try issue comments (discussion)
+    if review_res.status_code != 200:
+        raise Exception(f"GitHub API Error: {review_res.status_code}")
+
+    comments.extend([item["body"] for item in review_res.json()])
+
+    # Issue comments
     issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments"
     issue_res = requests.get(issue_url, headers=headers)
 
     if issue_res.status_code == 200:
-        issue_data = issue_res.json()
-        comments.extend([item["body"] for item in issue_data])
+        comments.extend([item["body"] for item in issue_res.json()])
 
     if not comments:
         raise Exception("No comments found on this PR")
