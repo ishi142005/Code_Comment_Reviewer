@@ -1,6 +1,6 @@
 # 🤖 Code Review Comment Analyzer
 
-🔗 Live App: [Add your deployed frontend link here]
+🔗 Live App: https://code-comment-reviewer-kx5pfmcjc-ishita-kanaujias-projects.vercel.app/
 
 ---
 

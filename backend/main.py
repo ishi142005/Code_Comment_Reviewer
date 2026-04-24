@@ -5,17 +5,32 @@ from model_loader import load_models
 from github_utils import parse_pr_url, fetch_pr_comments
 from predictor import predict_comments
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 app = FastAPI()
 
+origins = []
+
+frontend_url = os.getenv("FRONTEND_URL")
+local_url = os.getenv("LOCAL_FRONTEND_URL")
+
+if frontend_url:
+    origins.append(frontend_url)
+
+if local_url:
+    origins.append(local_url)
+
+# Fallback
+if not origins:
+    origins = ["http://localhost:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 clf, vectorizer = load_models()
 
 class PRRequest(BaseModel):
